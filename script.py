@@ -110,20 +110,53 @@ def decode_variable(bytes_data, tipo, start_byte, bit_start, factor, offset):
         return None
 
 
+def build_schema_for_topic(id_int, can_db):
+    """
+    Genera un JSON Schema con propiedades explícitas para cada variable del topic.
+    Foxglove necesita los campos declarados en el schema para poder plotearlos.
+    Los topics desconocidos usan un schema genérico ya que sus campos no son predecibles.
+    """
+    base_properties = {
+        "_raw_id": {"type": "integer"},
+        "_interface": {"type": "string"},
+    }
+
+    if id_int in can_db:
+        for var in can_db[id_int]:
+            tipo = var["type"]
+            # Bits/bools son enteros (0 o 1), el resto son números con decimales posibles
+            json_type = "integer" if tipo in ("bit", "bool") else "number"
+            base_properties[var["name"]] = {"type": json_type}
+        schema = {
+            "type": "object",
+            "properties": base_properties,
+        }
+    else:
+        # Topic desconocido: schema genérico, no se podrá plotear pero se preserva el dato
+        schema = {
+            "type": "object",
+            "properties": {
+                **base_properties,
+                "data_raw_hex": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+        }
+
+    return schema
+
+
 def candump_to_mcap(input_path, output_path, can_db):
     with open(output_path, "wb", buffering=1024*1024) as f:
         writer = Writer(f)
         writer.start()
 
-        schema_id = writer.register_schema(
-            name="decoded_can_msg",
-            encoding="jsonschema",
-            data=json.dumps({"type": "object"}).encode()
-        )
+        # Registramos un schema por topic (ID CAN), no uno genérico para todo.
+        # Esto es lo que permite a Foxglove descubrir los campos para el plot panel.
+        active_channels = {}   # topic_name -> channel_id
+        active_schemas = {}    # topic_name -> schema_id
 
-        active_channels = {}
-        
-        # Regex para ignorar espacios y aceptar minúsculas/mayúsculas en Hexadecimales
         line_regex = re.compile(
             r"\((?P<time>\d+\.\d+)\)\s+(?P<iface>\S+)\s+(?P<id>[0-9a-fA-F]+)\s+\[\d+\]\s+(?P<data>.+)"
         )
@@ -149,7 +182,7 @@ def candump_to_mcap(input_path, output_path, can_db):
                     if len(p) == 2 and all(c in "0123456789abcdefABCDEF" for c in p):
                         byte_data.append(int(p, 16))
                     else:
-                        break 
+                        break
 
                 payload = {"_raw_id": id_int, "_interface": groups["iface"]}
                 
@@ -159,16 +192,24 @@ def candump_to_mcap(input_path, output_path, can_db):
                     
                     for var in can_db[id_int]:
                         val = decode_variable(
-                            byte_data, var["type"], var["start"], var["bit_start"], var.get("factor", 1.0), var.get("offset", 0.0)
+                            byte_data, var["type"], var["start"], var["bit_start"],
+                            var.get("factor", 1.0), var.get("offset", 0.0)
                         )
                         if val is not None:
                             payload[var["name"]] = val
                 else:
                     topic_name = f"/can/unknown_0x{id_hex_clean}"
-                    # Convertimos a string hex para que sea legible en Foxglove/MCAP
                     payload["data_raw_hex"] = [f"{b:02X}" for b in byte_data]
 
+                # Registrar schema y channel la primera vez que vemos este topic
                 if topic_name not in active_channels:
+                    schema = build_schema_for_topic(id_int, can_db)
+                    schema_id = writer.register_schema(
+                        name=topic_name,          # nombre único por topic
+                        encoding="jsonschema",
+                        data=json.dumps(schema).encode()
+                    )
+                    active_schemas[topic_name] = schema_id
                     active_channels[topic_name] = writer.register_channel(
                         topic=topic_name,
                         message_encoding="json",
@@ -187,9 +228,16 @@ def candump_to_mcap(input_path, output_path, can_db):
 
 
 if __name__ == "__main__":
-    if not os.path.exists(output_folder): os.makedirs(output_folder)
-    if not os.path.exists(input_folder): os.makedirs(input_folder)
-    
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    if not os.path.exists(input_folder):
+        os.makedirs(input_folder)
+
+    for folder in (input_folder, output_folder):
+        gitkeep_path = os.path.join(folder, ".gitkeep")
+        if not os.path.exists(gitkeep_path):
+            open(gitkeep_path, "w").close()
+
     can_db_loaded = load_can_database(csv_database_path)
     log_files = [f for f in os.listdir(input_folder) if f.endswith((".txt", ".log"))]
     
@@ -201,3 +249,4 @@ if __name__ == "__main__":
             in_path = os.path.join(input_folder, filename)
             out_path = os.path.join(output_folder, os.path.splitext(filename)[0] + ".mcap")
             candump_to_mcap(in_path, out_path, can_db_loaded)
+            print(f"  -> {out_path}")
