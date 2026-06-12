@@ -1,15 +1,26 @@
-# CAN to MCAP Converter
+# CANDUMP2MCAP
 
-## Estructura del Proyecto
+Converts CAN bus logs from `candump` format (`.txt` / `.log`) into `.mcap` files ready for visualization in [Foxglove Studio](https://foxglove.dev).
 
-- `raw_logs/`: Coloca aquí tus archivos `.txt` o `.log` provenientes de `candump`.
-- `mcap_logs/`: Los archivos `.mcap` generados aparecerán aquí.
-- `candump2mcap.py`: El script principal de procesamiento.
+Each CAN ID is mapped to a dedicated topic with a typed JSON schema, allowing Foxglove's plot panel to discover and graph signals directly. If a `calibraciones.csv` database is provided, raw bytes are decoded into named physical variables (RPM, temperature, torque, etc.) applying the configured factor and offset. Unknown IDs are logged as raw hex.
 
-## Instalación
+## Project Structure
+- `raw_logs/` — Place your `.txt` or `.log` candump files here.
+- `mcap_logs/` — Generated `.mcap` files will appear here.
+- `candump2mcap.py` — Main processing script.
+- `calibraciones.csv` — CAN signal database (ID, byte layout, type, factor, offset).
 
-1. Asegúrate de tener instalado Python 3.8 o superior.
-2. Instala las dependencias necesarias:
-
+## Installation
+1. Make sure you have Python 3.8 or higher installed.
+2. Install the required dependencies:
 ```bash
 pip install mcap
+```
+
+## Usage
+1. Place your candump log files in `raw_logs/`.
+2. Run the script:
+```bash
+python3 candump2mcap.py
+```
+3. Open the generated `.mcap` files from `mcap_logs/` in Foxglove Studio.
