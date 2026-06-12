@@ -4,7 +4,7 @@
 
 - `raw_logs/`: Coloca aquí tus archivos `.txt` o `.log` provenientes de `candump`.
 - `mcap_logs/`: Los archivos `.mcap` generados aparecerán aquí.
-- `converter.py`: El script principal de procesamiento.
+- `candump2mcap.py`: El script principal de procesamiento.
 
 ## Instalación
 

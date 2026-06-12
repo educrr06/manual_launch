@@ -152,8 +152,7 @@ def candump_to_mcap(input_path, output_path, can_db):
         writer = Writer(f)
         writer.start()
 
-        # Registramos un schema por topic (ID CAN), no uno genérico para todo.
-        # Esto es lo que permite a Foxglove descubrir los campos para el plot panel.
+        # Registramos un schema por topic (ID CAN)
         active_channels = {}   # topic_name -> channel_id
         active_schemas = {}    # topic_name -> schema_id
 
